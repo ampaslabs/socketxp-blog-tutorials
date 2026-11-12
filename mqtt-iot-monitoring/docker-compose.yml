@@ -1,0 +1,122 @@
+# Self-hosted MQTT IoT monitoring stack:
+#   Mosquitto (broker) -> Telegraf (collector) -> InfluxDB (storage) -> Grafana (dashboards, alerts)
+# plus an offline watchdog and simulated devices so you can try everything on one machine.
+#
+# Quick start:  cp .env.example .env && ./scripts/setup.sh && docker compose up -d
+# Pi gateway demo (Mosquitto bridge + simulated ESP32):  docker compose --profile gateway up -d
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - mosquitto-data:/mosquitto/data
+    restart: unless-stopped
+
+  influxdb:
+    image: influxdb:2.7
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: iot
+      DOCKER_INFLUXDB_INIT_BUCKET: telemetry
+      DOCKER_INFLUXDB_INIT_RETENTION: 30d
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    restart: unless-stopped
+
+  telegraf:
+    image: telegraf:1.32
+    environment:
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      MQTT_TELEGRAF_PASSWORD: ${MQTT_TELEGRAF_PASSWORD}
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    depends_on: [mosquitto, influxdb]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    ports:
+      - "127.0.0.1:3000:3000"   # local only; share it securely with `socketxp connect http://localhost:3000`
+    environment:
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      # Open the fleet dashboard right after login instead of the empty Home page
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/iot-fleet.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [influxdb]
+    restart: unless-stopped
+
+  watchdog:
+    build: ./watchdog
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PASSWORD: ${MQTT_WATCHDOG_PASSWORD}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  # --- Simulated devices: the same agent you run on a Raspberry Pi or Linux gateway ---
+  device01:
+    build: ./device
+    environment: &device-env
+      MQTT_HOST: mosquitto
+      SITE: site1
+      DEVICE_ID: device01
+      MQTT_PASSWORD: ${MQTT_DEVICE_PASSWORD}
+      FW_VERSION: "1.4.2"
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  device02:
+    build: ./device
+    environment:
+      <<: *device-env
+      DEVICE_ID: device02
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  device03:
+    build: ./device
+    environment:
+      <<: *device-env
+      SITE: site2
+      DEVICE_ID: device03
+      FW_VERSION: "1.5.0"
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  # --- Optional: Raspberry Pi site gateway with a Mosquitto bridge (profile "gateway") ---
+  gateway:
+    image: eclipse-mosquitto:2
+    profiles: [gateway]
+    volumes:
+      - ./gateway:/mosquitto/config
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  # Simulated ESP32 behind the gateway (publishes the same JSON as the ESP32 sketch)
+  esp32-sim:
+    build: ./device
+    profiles: [gateway]
+    command: ["python", "-u", "esp32_sim.py"]
+    environment:
+      MQTT_HOST: gateway
+      SITE: site3
+      DEVICE_ID: esp32-node-01
+      MQTT_PASSWORD: ${MQTT_DEVICE_PASSWORD}
+    depends_on: [gateway]
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  influxdb-data:
+  grafana-data:

@@ -1,0 +1,23 @@
+# Telegraf reads telemetry, status, events and broker metrics
+user telegraf
+topic read fleet/+/+/telemetry
+topic read fleet/+/+/status
+topic read fleet/+/+/event
+topic read $SYS/#
+
+# The watchdog reads everything under fleet/ and writes device and site alerts
+user watchdog
+topic read fleet/#
+topic write fleet/+/+/alerts
+topic write fleet/+/alerts
+
+# A site gateway may publish anything for its own site (bridge)
+user site3-gateway
+topic write fleet/site3/#
+
+# Every device (username = device ID) can only publish its own topics
+pattern write fleet/+/%u/telemetry
+pattern write fleet/+/%u/heartbeat
+pattern write fleet/+/%u/status
+pattern write fleet/+/%u/event
+pattern read fleet/+/%u/cmd

@@ -1,0 +1,23 @@
+# Raspberry Pi site gateway: local broker for ESP32s + bridge to the central broker.
+# scripts/setup.sh renders this into mosquitto.conf.
+
+# Local listener for devices on the site network
+listener 1883
+allow_anonymous false
+password_file /mosquitto/config/passwd
+log_dest stdout
+
+# Bridge to the central monitoring broker.
+# On a real Pi, point this at the SocketXP tunnel instead: address 127.0.0.1:3883
+connection central
+address mosquitto:1883
+remote_clientid site3-gateway
+remote_username site3-gateway
+remote_password __GATEWAY_PASSWORD__
+topic fleet/site3/# out 1
+cleansession false
+
+# Publish 1/0 on this topic when the bridge connects/disconnects.
+# Mosquitto also registers "0" as the bridge's Last Will on the central broker.
+notifications true
+notification_topic fleet/site3/pi-gw-01/bridge

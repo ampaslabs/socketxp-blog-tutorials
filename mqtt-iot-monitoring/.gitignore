@@ -1,0 +1,5 @@
+.env
+mosquitto/config/passwd
+gateway/passwd
+gateway/mosquitto.conf
+__pycache__/
