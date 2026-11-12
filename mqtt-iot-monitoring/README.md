@@ -99,7 +99,7 @@ docker compose kill -s HUP mosquitto     # reload credentials
 `device/esp32_sim.py`, so the dashboard and watchdog work unchanged.
 
 **Pi site gateway**: use `gateway/mosquitto.conf.template` on the Pi. Point `address` at your central broker
-(for example `127.0.0.1:3883` through a SocketXP tunnel) and allow the gateway user to publish `fleet/<site>/#`.
+(TLS on port 8883 with `bridge_cafile`) and allow the gateway user to publish `fleet/<site>/#`.
 
 ## Before you use this in production
 
