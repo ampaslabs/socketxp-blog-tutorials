@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local LLM Chatbot</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 16px; }
+    #log { border: 1px solid #ddd; border-radius: 8px; padding: 12px; height: 65vh; overflow-y: auto; }
+    .msg { margin: 8px 0; padding: 8px 12px; border-radius: 8px; white-space: pre-wrap; }
+    .user { background: #e8f0fe; margin-left: 15%; }
+    .assistant { background: #f3f3f3; margin-right: 15%; }
+    form { display: flex; gap: 8px; margin-top: 12px; }
+    input { flex: 1; padding: 10px; font-size: 16px; }
+    button { padding: 10px 16px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h2>Local LLM Chatbot <small>({{ model }})</small></h2>
+  <div id="log"></div>
+  <form id="chat-form">
+    <input id="prompt" placeholder="Ask something..." autocomplete="off" required>
+    <button id="send">Send</button>
+  </form>
+
+  <script>
+    const log = document.getElementById("log");
+    const form = document.getElementById("chat-form");
+    const input = document.getElementById("prompt");
+    const button = document.getElementById("send");
+    const messages = [];
+
+    function addBubble(role, text) {
+      const div = document.createElement("div");
+      div.className = "msg " + role;
+      div.textContent = text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+      return div;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+
+      messages.push({ role: "user", content: text });
+      addBubble("user", text);
+      input.value = "";
+      button.disabled = true;
+
+      const bubble = addBubble("assistant", "");
+      let reply = "";
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          reply += decoder.decode(value, { stream: true });
+          bubble.textContent = reply;
+          log.scrollTop = log.scrollHeight;
+        }
+        messages.push({ role: "assistant", content: reply });
+      } catch (err) {
+        bubble.textContent = "Error: " + err.message;
+        messages.pop();
+      } finally {
+        button.disabled = false;
+        input.focus();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# /etc/systemd/system/reverse-tunnel.service on the device
+# sudo systemctl daemon-reload && sudo systemctl enable --now reverse-tunnel
+
+[Unit]
+Description=Reverse SSH tunnel to tunnel.example.com (app.example.com)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=tunnel-client
+ExecStart=/usr/bin/ssh -NT \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -o ExitOnForwardFailure=yes \
+  -o StrictHostKeyChecking=yes \
+  -i /home/tunnel-client/.ssh/id_ed25519 \
+  -R 8080:localhost:3000 \
+  tunnel@tunnel.example.com
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

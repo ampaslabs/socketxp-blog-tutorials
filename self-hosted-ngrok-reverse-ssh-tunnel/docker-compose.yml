@@ -1,0 +1,68 @@
+# Test lab for "Build a Self-Hosted ngrok With a Reverse SSH Tunnel and Nginx"
+# https://www.socketxp.com/iot/self-hosted-ngrok-reverse-ssh-tunnel-nginx/
+#
+#   docker compose up -d --build
+#   ./test.sh
+#   docker compose down -v
+
+name: ssh-tunnel-lab
+
+services:
+  # Generates fresh SSH keys into the "keys" volume on first run.
+  keygen:
+    build: ./lab/client
+    command: ["bash", "/lab/keygen.sh"]
+    volumes:
+      - keys:/keys
+      - ./lab/keygen.sh:/lab/keygen.sh:ro
+
+  # The public VPS: sshd + Nginx, using the configs from ./configs as-is.
+  vps:
+    build: ./lab/vps
+    depends_on:
+      keygen: { condition: service_completed_successfully }
+    volumes:
+      - keys:/keys:ro
+      - ./configs/sshd/10-tunnel.conf:/etc/ssh/sshd_config.d/10-tunnel.conf:ro
+      - ./configs/nginx/tunnels.example.com.conf:/etc/nginx/sites-enabled/tunnels.example.com:ro
+    networks:
+      internet:
+        aliases: [tunnel.example.com, example.com, app.example.com, grafana.example.com, shop.example.com, unknown.example.com]
+
+  # device-01: web app on :3000 and a second app ("shop") on :8000, one key, two ports.
+  device1:
+    build: ./lab/device
+    depends_on: [vps]
+    environment:
+      DEVICE_NAME: device-01
+      KEY_NAME: device01
+      TUNNELS: "-R 8080:localhost:3000 -R 8082:localhost:8000"
+    volumes:
+      - keys:/keys:ro
+    networks: [internet]
+
+  # device-02: a dashboard with WebSockets on :3001 (stands in for Grafana).
+  device2:
+    build: ./lab/device
+    depends_on: [vps]
+    environment:
+      DEVICE_NAME: device-02
+      KEY_NAME: device02
+      TUNNELS: "-R 8081:localhost:3001"
+    volumes:
+      - keys:/keys:ro
+    networks: [internet]
+
+  # An outside machine on the internet, used by test.sh.
+  client:
+    build: ./lab/client
+    command: ["sleep", "infinity"]
+    volumes:
+      - keys:/keys:ro
+    networks: [internet]
+
+volumes:
+  keys:
+
+networks:
+  internet:

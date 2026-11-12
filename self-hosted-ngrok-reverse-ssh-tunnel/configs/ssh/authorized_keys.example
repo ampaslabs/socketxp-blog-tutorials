@@ -1,0 +1,6 @@
+# /home/tunnel/.ssh/authorized_keys on the VPS
+# One line per device key. sshd only uses the FIRST line that matches a key,
+# so list every port a device may open on that device's single line.
+
+restrict,port-forwarding,permitlisten="8080",permitlisten="8082" ssh-ed25519 AAAA... device-01
+restrict,port-forwarding,permitlisten="8081" ssh-ed25519 AAAA... device-02
